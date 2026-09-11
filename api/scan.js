@@ -15,97 +15,11 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'Missing image data.' });
   }
 
-  const prompt = `You are a medical lab data extractor. Analyze this lab report image or PDF and extract ALL numeric lab values you can find.
-
+  const systemPrompt = `You are a medical lab data extractor. Analyze this lab report image and extract ALL numeric lab values you can find.
 Return ONLY a valid JSON object with these exact keys (use null if not found). Do not include any explanation, markdown, or text outside the JSON.
 
 {
-  "tc": null,
-  "hdl": null,
-  "ldl": null,
-  "tg": null,
-  "vldl": null,
-  "lipoA": null,
-  "apoA": null,
-  "apoB": null,
-  "ldlP": null,
-  "smallLdlP": null,
-  "sdLdl": null,
-  "hdlP": null,
-  "largeHdlP": null,
-  "largeVldlP": null,
-  "vldlP": null,
-  "ldlSizeNmr": null,
-  "hdlSizeNmr": null,
-  "vldlSizeNmr": null,
-  "glucose": null,
-  "bun": null,
-  "creatinine": null,
-  "sodium": null,
-  "potassium": null,
-  "chloride": null,
-  "bicarb": null,
-  "calcium": null,
-  "albumin": null,
-  "alt": null,
-  "ast": null,
-  "alkPhos": null,
-  "ggt": null,
-  "tBili": null,
-  "directBili": null,
-  "a1c": null,
-  "insulin": null,
-  "crp": null,
-  "basicCrp": null,
-  "cortisol": null,
-  "homocysteine": null,
-  "ldh": null,
-  "uricAcid": null,
-  "ck": null,
-  "ckMb": null,
-  "tsh": null,
-  "freeT3": null,
-  "freeT4": null,
-  "reverseT3": null,
-  "tpoAb": null,
-  "tgAb": null,
-  "vitD": null,
-  "rbcMag": null,
-  "b12": null,
-  "folate": null,
-  "wbc": null,
-  "rbc": null,
-  "hemoglobin": null,
-  "hematocrit": null,
-  "mcv": null,
-  "mch": null,
-  "mchc": null,
-  "rdw": null,
-  "platelets": null,
-  "neutrophils": null,
-  "lymphocytes": null,
-  "monocytes": null,
-  "eosinophils": null,
-  "basophils": null,
-  "serumIron": null,
-  "tibc": null,
-  "uibc": null,
-  "transferrinSat": null,
-  "ferritin": null,
-  "testosterone": null,
-  "estradiol": null,
-  "progesterone": null,
-  "psa": null,
-  "dheas": null,
-  "fsh": null,
-  "lh": null,
-  "prolactin": null,
-  "shbg": null,
-  "igf1": null,
-  "age": null,
-  "sex": null,
-  "patientName": null,
-  "collectionDate": null
+  "tc": null, "hdl": null, "ldl": null, "tg": null, "vldl": null, "lipoA": null, "apoA": null, "apoB": null, "ldlP": null, "smallLdlP": null, "sdLdl": null, "hdlP": null, "largeHdlP": null, "largeVldlP": null, "vldlP": null, "ldlSizeNmr": null, "hdlSizeNmr": null, "vldlSizeNmr": null, "glucose": null, "bun": null, "creatinine": null, "sodium": null, "potassium": null, "chloride": null, "bicarb": null, "calcium": null, "albumin": null, "alt": null, "ast": null, "alkPhos": null, "ggt": null, "tBili": null, "directBili": null, "a1c": null, "insulin": null, "crp": null, "basicCrp": null, "cortisol": null, "homocysteine": null, "ldh": null, "uricAcid": null, "ck": null, "ckMb": null, "tsh": null, "freeT3": null, "freeT4": null, "reverseT3": null, "tpoAb": null, "tgAb": null, "vitD": null, "rbcMag": null, "b12": null, "folate": null, "wbc": null, "rbc": null, "hemoglobin": null, "hematocrit": null, "mcv": null, "mch": null, "mchc": null, "rdw": null, "platelets": null, "neutrophils": null, "lymphocytes": null, "monocytes": null, "eosinophils": null, "basophils": null, "serumIron": null, "tibc": null, "uibc": null, "transferrinSat": null, "ferritin": null, "testosterone": null, "estradiol": null, "progesterone": null, "psa": null, "dheas": null, "fsh": null, "lh": null, "prolactin": null, "shbg": null, "igf1": null, "age": null, "sex": null, "patientName": null, "collectionDate": null
 }
 
 Important extraction rules:
@@ -131,23 +45,29 @@ Important extraction rules:
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: 'claude-opus-4-5',
+        model: 'claude-3-5-sonnet-latest', // Fixed model name
         max_tokens: 2000,
-        messages: [{
-          role: 'user',
-          content: [
-            {
-              type: 'image',
-              source: {
-                type: 'base64',
-                media_type: mediaType,
-                data: imageBase64,
-              }
-            },
-            { type: 'text', text: prompt }
-          ]
-        }]
-      })
+        system: systemPrompt, // Moved prompt instructions to system parameter
+        messages: [
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'image',
+                source: {
+                  type: 'base64',
+                  media_type: mediaType, // Must be image/jpeg, image/png, image/webp, or image/gif
+                  data: imageBase64,
+                },
+              },
+              {
+                type: 'text',
+                text: 'Extract the data from this lab report.',
+              },
+            ],
+          },
+        ],
+      }),
     });
 
     if (!response.ok) {
