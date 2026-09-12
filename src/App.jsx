@@ -8,23 +8,26 @@ async function scanLabReport(file) {
     const reader = new FileReader();
     reader.onload = async (e) => {
       try {
-        const result = e.target.result;
-        // Handle both data URL format and raw base64
-        let base64, mediaType;
-        if (typeof result === 'string' && result.includes(',')) {
-          const parts = result.split(',');
-          base64 = parts[1];
-          // Extract media type from data URL, normalize it
-          const mime = parts[0].match(/:(.*?);/)?.[1] || file.type || 'image/jpeg';
-          mediaType = mime.toLowerCase().split(';')[0].trim();
-        } else {
-          base64 = result;
-          mediaType = file.type || 'image/jpeg';
+        const dataUrl = e.target.result;
+        if (!dataUrl || typeof dataUrl !== 'string') {
+          return reject(new Error('Could not read file. Please try a different file.'));
         }
-        // Normalize media type for Safari compatibility
-        if (!mediaType || mediaType === 'application/octet-stream') mediaType = 'image/jpeg';
+        // Parse data URL — format is "data:<mediaType>;base64,<data>"
+        const commaIdx = dataUrl.indexOf(',');
+        if (commaIdx === -1) {
+          return reject(new Error('Could not read file format. Please try a PDF or PNG.'));
+        }
+        const base64 = dataUrl.slice(commaIdx + 1);
+        const header = dataUrl.slice(0, commaIdx);
+        // Extract media type from header
+        const mimeMatch = header.match(/data:([^;]+)/);
+        let mediaType = mimeMatch ? mimeMatch[1].toLowerCase() : (file.type || 'image/jpeg');
+        // Normalize for Anthropic compatibility
         if (mediaType === 'image/jpg') mediaType = 'image/jpeg';
         if (mediaType === 'image/heic' || mediaType === 'image/heif') mediaType = 'image/jpeg';
+        if (mediaType === 'application/octet-stream' || !mediaType) mediaType = 'image/jpeg';
+        const allowed = ['image/jpeg','image/png','image/gif','image/webp','application/pdf'];
+        if (!allowed.includes(mediaType)) mediaType = 'image/jpeg';
 
         const res = await fetch('/api/scan', {
           method: 'POST',
@@ -35,11 +38,10 @@ async function scanLabReport(file) {
         if (data.error) reject(new Error(data.error));
         else resolve(data.extracted || {});
       } catch (err) {
-        reject(err);
+        reject(new Error('Scan failed: ' + err.message));
       }
     };
-    reader.onerror = () => reject(new Error('Failed to read file. Please try again.'));
-    // Use readAsDataURL for all file types - most compatible across browsers
+    reader.onerror = () => reject(new Error('Failed to read file. Try a different format.'));
     reader.readAsDataURL(file);
   });
 }
@@ -1641,7 +1643,7 @@ export default function App() {
             <input
               ref={fileInputRef}
               type="file"
-              accept="image/*,.pdf,application/pdf"
+              accept="image/*,image/heic,image/heif,.pdf,application/pdf"
               style={{ display: "none" }}
               onChange={handleScan}
             />
