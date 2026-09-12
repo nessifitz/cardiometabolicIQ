@@ -4,27 +4,40 @@ import { useState, useRef } from "react";
    SCAN HELPER — calls /api/scan serverless function
 ═══════════════════════════════════════════════════════════ */
 async function scanLabReport(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = async (e) => {
+  // If file is HEIC/HEIF, convert via canvas first
+  const tryCanvasConvert = (file) => new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
       try {
-        const dataUrl = e.target.result;
-        if (!dataUrl || typeof dataUrl !== 'string') {
-          return reject(new Error('Could not read file. Please try a different file.'));
-        }
-        // Parse data URL — format is "data:<mediaType>;base64,<data>"
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width;
+        canvas.height = img.height;
+        canvas.getContext('2d').drawImage(img, 0, 0);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+        URL.revokeObjectURL(url);
+        resolve(dataUrl);
+      } catch(e) { URL.revokeObjectURL(url); reject(e); }
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Image load failed')); };
+    img.src = url;
+  });
+
+  return new Promise((resolve, reject) => {
+    const fileType = (file.type || '').toLowerCase();
+    const isHeic = fileType.includes('heic') || fileType.includes('heif') || file.name?.toLowerCase().endsWith('.heic');
+    const isPdf = fileType === 'application/pdf' || file.name?.toLowerCase().endsWith('.pdf');
+
+    const processDataUrl = async (dataUrl) => {
+      try {
+        if (!dataUrl || typeof dataUrl !== 'string') throw new Error('Could not read file.');
         const commaIdx = dataUrl.indexOf(',');
-        if (commaIdx === -1) {
-          return reject(new Error('Could not read file format. Please try a PDF or PNG.'));
-        }
+        if (commaIdx === -1) throw new Error('Invalid file format. Please use JPEG, PNG, or PDF.');
         const base64 = dataUrl.slice(commaIdx + 1);
-        const header = dataUrl.slice(0, commaIdx);
-        // Extract media type from header
-        const mimeMatch = header.match(/data:([^;]+)/);
-        let mediaType = mimeMatch ? mimeMatch[1].toLowerCase() : (file.type || 'image/jpeg');
-        // Normalize for Anthropic compatibility
+        const mimeMatch = dataUrl.slice(0, commaIdx).match(/data:([^;]+)/);
+        let mediaType = mimeMatch ? mimeMatch[1].toLowerCase() : 'image/jpeg';
         if (mediaType === 'image/jpg') mediaType = 'image/jpeg';
-        if (mediaType === 'image/heic' || mediaType === 'image/heif') mediaType = 'image/jpeg';
+        if (mediaType.includes('heic') || mediaType.includes('heif')) mediaType = 'image/jpeg';
         if (mediaType === 'application/octet-stream' || !mediaType) mediaType = 'image/jpeg';
         const allowed = ['image/jpeg','image/png','image/gif','image/webp','application/pdf'];
         if (!allowed.includes(mediaType)) mediaType = 'image/jpeg';
@@ -37,11 +50,20 @@ async function scanLabReport(file) {
         const data = await res.json();
         if (data.error) reject(new Error(data.error));
         else resolve(data.extracted || {});
-      } catch (err) {
-        reject(new Error('Scan failed: ' + err.message));
-      }
+      } catch (err) { reject(err); }
     };
-    reader.onerror = () => reject(new Error('Failed to read file. Try a different format.'));
+
+    if (isHeic) {
+      // Try canvas conversion for HEIC
+      tryCanvasConvert(file)
+        .then(dataUrl => processDataUrl(dataUrl))
+        .catch(() => reject(new Error('iPhone HEIC photos are not supported. Please take a screenshot instead, or save the lab as a PDF.')));
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (e) => processDataUrl(e.target.result);
+    reader.onerror = () => reject(new Error('Failed to read file. For iPhone photos, try taking a screenshot or using a PDF instead.'));
     reader.readAsDataURL(file);
   });
 }
